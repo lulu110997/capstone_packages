@@ -1,0 +1,16 @@
+<launch>
+      
+     <include file="$(find rbvogui_sim_bringup)/launch/rbvogui_complete.launch">
+           <arg name="robot_xacro" value="rbvogui_std_ur10.urdf.xacro"/>      
+           <arg name="launch_arm" value="true"/>
+           <arg name="arm_manufacturer" value="ur"/>
+           <arg name="arm_model" value="ur10"/>
+     </include>
+
+
+     <include file="$(find traj_follow_mobman)/launch/custom_joy_teleop.launch"/>
+     <include file="$(find vel_cont_mobman)/launch/mobman_control.launch"/>
+     <node pkg="cas_jacobian" type="ur_jacobian" name="jacobian"/>
+     <!-- <node pkg="cas_jacobian" type="admittance_controller.py" name="admittance_controller_node"/> -->
+
+</launch>

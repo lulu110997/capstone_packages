@@ -1,0 +1,33 @@
+robot:
+  # Position Controllers
+  joint1_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_shoulder_pan_joint
+  joint2_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_shoulder_lift_joint
+  joint3_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_elbow_joint
+  joint4_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_1_joint
+  joint5_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_2_joint
+  joint6_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_3_joint
+
+  # joint_state_controller:
+  #   type: joint_state_controller/JointStateController
+  #   publish_rate: 25
+
+# Robotnik seems to have their own joint state controller that publishes 
+# the joint states of the robot. This means that we don't need the robot
+# state publisher or joint state controller. Not sure where in their
+# stack these controllers are called from tho
+# /robot/joint_read_command_controller/publish_rate
+# /robot/joint_read_command_controller/type
+# /robot/joint_read_state_controller/publish_rate
+# /robot/joint_read_state_controller/type

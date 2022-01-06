@@ -1,254 +1,185 @@
-/**
- * @file ur_jacobian.cpp
- * @author Marc Carmichael, Richardo Khonasty
- * @date May 2020
- * @brief ROS node that calculate ur_robot Jacobian based on the URDF
- */
+///**
+// * @file vogui_ur_jacobians.cpp
+// * @author Louis Fernandez
+// * @brief ROS node that calculate RB-Vogui + UR10 Jacobian based on the URDF
+// */
+////#define DEBUG
 
-#include <ros/ros.h>
-#include <iostream>
-#include <sensor_msgs/JointState.h>
-#include <std_msgs/Float64MultiArray.h>
-#include <ros/console.h>
+//Jacobian::~Jacobian(){
+//    std::cout << "destroying class" << std::endl;
+//    for (auto &t : threads) {
+//        t.join();
+//        std::cout << "joining threads" << std::endl;
+//    }
+//}
 
-#include <tf2_ros/transform_listener.h>
-#include <tf2_kdl/tf2_kdl.h>
+//Jacobian::Jacobian() {
+//    ros::NodeHandle _n;
+//    _nh = ros::NodeHandle("robot/");
 
-#include <kdl_parser/kdl_parser.hpp>
-#include <kdl/chainjnttojacsolver.hpp>
-#include <kdl/treejnttojacsolver.hpp>
-#include <kdl/jacobian.hpp>
-#include <kdl/kdl.hpp>
-#include <kdl/segment.hpp>
-#include <kdl_conversions/kdl_msg.h>
-#include <kdl/chainfksolverpos_recursive.hpp>
+//    std::string robot_arm_base = "robot_arm_base", robot_arm_tool = "robot_arm_tool0";
 
-#include <boost/scoped_ptr.hpp>
+//    sub_vogui_odom_ = _nh.subscribe("robotnik_base_control/odom", 10, &Jacobian::odomCallback, this);
+//    sub_joint_state_ = _nh.subscribe("joint_states", 10, &Jacobian::jointStateCallback, this);
+//    pub_jacobian_ = _n.advertise<std_msgs::Float64MultiArray>("jacobian_0",1);
+//    pub_jacobian_e_ = _n.advertise<std_msgs::Float64MultiArray>("jacobian_e",1);
 
-#include <thread>
-#include <algorithm>
-#include <condition_variable>
+//    _nh.param("robot_description", _robot_desc, std::string());
 
-class Jacobian{
-    
-public:
-    Jacobian(ros::NodeHandle* n);
-    ~Jacobian();
-    void tf_listener_thread();
-private:
-    void jointStateCallback(const sensor_msgs::JointState::ConstPtr& msg);
+//    KDL::Tree tree;
+//    if(!kdl_parser::treeFromString(_robot_desc, tree)) {
+//        ROS_ERROR("KDL tree was not able constructed, shutting down the node");
+//        ros::shutdown();
+//        return;
+//    }
 
-    std::condition_variable cv_;
-    std::mutex mtx_;
-    std::vector<std::thread> threads;
-    std::atomic<bool> transform_calcd = {false};
+//    KDL::Chain arm;
+//    if (!tree.getChain(robot_arm_base, robot_arm_tool, arm)) {
+//        ROS_ERROR("KDL chain was not able to be obtained, shutting down the node");
+//        ros::shutdown();
+//        return;
+//    }
 
-    ros::NodeHandle _n;
-    ros::NodeHandle _nh;
-    
-    ros::Subscriber _sub_joint_state;
-    ros::Publisher _pub_jacobian;
+//    // Define the origin of the joints and axis they rotate around or translate
+//    // along. Must coincide with the UR10's base joint
+//    KDL::Vector z_origin(0, 0, 0.127959), xy_origin(0,0,0);
+//    KDL::Vector rotz_axis(0,0,1), prisy_axis(0,1,0), prisx_axis(1,0,0);
 
-    std::string _robot_desc;
+//    // Model the RB-VOGUI using 1 revolute joint around z and 2 prismatic joints
+//    // along the y and x
+//    KDL::Joint rotz("rotz", z_origin, rotz_axis, KDL::Joint::JointType::RotAxis),
+//        prisy("prisy", xy_origin, prisy_axis, KDL::Joint::JointType::TransAxis),
+//        prisx("prisx", xy_origin, prisx_axis, KDL::Joint::JointType::TransAxis);
 
-    struct MobileBaseFrames {
-        std::string front_right;
-        std::string front_left;
-        std::string back_right;
-        std::string back_left;
-    } mobile_base_frames_;
+//    // Define segment in which each joint will be attached to and then add it on the chain
+//    KDL::Segment segz("segz", rotz), segy("segy", prisy), segx("segx", prisx);
+//    _kdl_chain.addSegment(segz);
+//    _kdl_chain.addSegment(segy);
+//    _kdl_chain.addSegment(segx);
+//    for (int i = 1; i < 8; i++) { // Add each segment on the robot arm on the chain
+//        _kdl_chain.addSegment(arm.getSegment(i));
+//    }
+//    num_jnts_ = _kdl_chain.getNrOfJoints();
 
-    struct MobileToolFrames {
-        std::string front_right;
-        std::string front_left;
-        std::string back_right;
-        std::string back_left;
-    } mobile_tool_frames_;
+//    // Start the tf thread and reset the jacobian solver
+//    threads.push_back(std::thread(&Jacobian::tf_listener_thread, this));
+//    _chain_jacobian_solver.reset(new KDL::ChainJntToJacSolver(_kdl_chain));
 
-    /*   14 joints in total. Joint names:
-     robot_arm_shoulder_pan_joint
-     robot_arm_shoulder_lift_joint
-     robot_arm_elbow_joint
-     robot_arm_wrist_1_joint
-     robot_arm_wrist_2_joint
-     robot_arm_wrist_3_joint
-     robot_back_left_motor_wheel_joint
-     robot_back_left_wheel_joint
-     robot_back_right_motor_wheel_joint
-     robot_back_right_wheel_joint
-     robot_front_left_motor_wheel_joint
-     robot_front_left_wheel_joint
-     robot_front_right_motor_wheel_joint
-     robot_front_right_wheel_joint
-*/
-    std::vector<std::string> joint_names_ = {
-        "robot_arm_shoulder_pan_joint",
-        "robot_arm_shoulder_lift_joint",
-        "robot_arm_elbow_joint",
-        "robot_arm_wrist_1_joint",
-        "robot_arm_wrist_2_joint",
-        "robot_arm_wrist_3_joint",
-        "robot_back_left_motor_wheel_joint",
-        "robot_back_left_wheel_joint",
-        "robot_back_right_motor_wheel_joint",
-        "robot_back_right_wheel_joint",
-        "robot_front_left_motor_wheel_joint",
-        "robot_front_left_wheel_joint",
-        "robot_front_right_motor_wheel_joint",
-        "robot_front_right_wheel_joint"
-    };
-    
-    KDL::Tree _kdl_tree;
-    KDL::Chain _kdl_chain;
-    KDL::Rotation frame_rotation_;
+//    joint_positions_.jnts.resize(num_jnts_);
 
-    boost::scoped_ptr<KDL::TreeJntToJacSolver> _jacobian_solver;
-    boost::scoped_ptr<KDL::ChainJntToJacSolver> _chain_jacobian_solver;
+//#ifdef DEBUG
+//    ROS_INFO_STREAM("Obtaining names of joints in the chain");
+//    for(int i = 0; i < _kdl_chain.getNrOfSegments(); i++) {
+//        ROS_INFO_STREAM(_kdl_chain.getSegment(i).getName());
+//        auto originn = _kdl_chain.getSegment(i).getJoint().JointOrigin();
+//        auto axis = _kdl_chain.getSegment(i).getJoint().JointAxis();
+//        ROS_INFO_STREAM("   origin " << 1.001*originn.data[0] << " " << 1.001*originn.data[1] << " " << 1.001*originn.data[2]);
+//        ROS_INFO_STREAM("   axis " << 1.001*axis.data[0] << " " << 1.001*axis.data[1] << " " << 1.001*axis.data[2]);
+//    }
 
-};
+//    ros::shutdown(); return;
+//#endif
 
-Jacobian::~Jacobian(){
-    std::cout << "destroying class" << std::endl;
-    transform_calcd = true;
-    cv_.notify_all();
-    for (auto &t : threads) {
-        t.join();
-        std::cout << "joining threads" << std::endl;
-    }
-}
+//}
 
-Jacobian::Jacobian(ros::NodeHandle* n):_n(*n) {
-    _nh = ros::NodeHandle("robot/");
+//void Jacobian::odomCallback(const nav_msgs::Odometry::ConstPtr &msg) {
 
-//    _nh.param<std::string>("base_frame", mobile_base_frames_.front_right, "robot_front_right_wheel");
-//    _nh.param<std::string>("tool_frame", mobile_tool_frames_.front_right, "robot_arm_tool0");
-    _nh.param<std::string>("base_frame", mobile_base_frames_.front_right, "robot_base_footprint"); //robot_arm_base
-    _nh.param<std::string>("tool_frame", mobile_tool_frames_.front_right, "robot_arm_tool0");
+//    uniq_lck lck(joint_positions_.mtx);
+//    joint_positions_.jnts.data[0] = tf::getYaw(msg->pose.pose.orientation);
+//    joint_positions_.jnts.data[1] = msg->pose.pose.position.y;
+//    joint_positions_.jnts.data[2] = msg->pose.pose.position.x;
+//}
 
-    //    _nh.param<std::string>("base_frame", mobile_base_frames_.front_left, "robot_front_left_wheel");
-    //    _nh.param<std::string>("tool_frame", mobile_tool_frames_.front_left, "robot_arm_tool0");
+//void Jacobian::jointStateCallback(const sensor_msgs::JointState::ConstPtr &msg) {
 
-    //    _nh.param<std::string>("base_frame", mobile_base_frames_.back_right, "robot_back_right_wheel");
-    //    _nh.param<std::string>("tool_frame", mobile_tool_frames_.back_right, "robot_arm_tool0");
+//    uniq_lck lck(joint_positions_.mtx);
+//    int j = 0;
+//    for (int i = 3; i < num_jnts_; i++) {
+//        joint_positions_.jnts.data[i] = msg->position[std::find(msg->name.begin(), msg->name.end(), joint_names_[j]) - msg->name.begin()];
+//        j++;
+//    }
+//}
 
-    //    _nh.param<std::string>("base_frame", mobile_base_frames_.back_left, "robot_back_left_wheel");
-    //    _nh.param<std::string>("tool_frame", mobile_tool_frames_.back_left, "robot_arm_tool0");
+//void Jacobian::tf_listener_thread() {
+//    tf2_ros::Buffer tf_buffer;
+//    tf2_ros::TransformListener listener(tf_buffer);
+//    geometry_msgs::TransformStamped transform_stamped;
 
-    _sub_joint_state = _nh.subscribe("joint_states", 10, &Jacobian::jointStateCallback, this);
-    _pub_jacobian = _n.advertise<std_msgs::Float64MultiArray>("jacobian_0",1);
+//    ros::Rate rate(25);
 
-    _nh.param("robot_description", _robot_desc, std::string());
+//    while(ros::ok()) {
+//        try {
+//            transform_stamped = tf_buffer.lookupTransform("robot_arm_tool0", "robot_arm_base", ros::Time(0));
+//            frame_rotation_ = tf2::transformToKDL(transform_stamped).M;
+//            frame_rotation_.DoRotZ(M_PI);
+//            publishJacobians();
+//        }
+//        catch (tf2::TransformException &ex) {
+//            ROS_WARN("%s",ex.what());
+//            ros::Duration(1.0).sleep();
+//            continue;
+//        }
+//        rate.sleep();
+//    }
+//}
 
-    if(!kdl_parser::treeFromString(_robot_desc, _kdl_tree)) {
-        ROS_ERROR("KDL tree was not able constructed, shutting down the node");
-        ros::shutdown();
-        return;
-    }
-    ROS_INFO_STREAM(_kdl_tree.getNrOfJoints() << " is the number of joints in the tree");
-    ROS_INFO_STREAM("The root segment in the tree is " << _kdl_tree.getRootSegment()->first);
-    ROS_INFO_STREAM(_kdl_tree.getNrOfSegments() << " is the number of segments in the tree. "
-                                                   "The name of each segment from the of the SegmentMap is as follows:");
-    for (auto it = _kdl_tree.getSegments().begin(); it != _kdl_tree.getSegments().end(); it++) {
-        ROS_INFO_STREAM( "  " << it->first);
-        ROS_INFO_STREAM("       This segment has a joint of type "
-                        << it->second.segment.getJoint().getTypeName() << " and name "
-                        << it->second.segment.getJoint().getName());
-    }
+//void Jacobian::publishJacobians() {
 
-    if (!_kdl_tree.getChain(mobile_base_frames_.front_right, mobile_tool_frames_.front_right, _kdl_chain)) {
-        ROS_ERROR("KDL chain was not able to be obtained, shutting down the node");
-        ros::shutdown();
-        return;
-    }
+//    KDL::Jacobian kdl_jacobian(num_jnts_);
+//    KDL::Jacobian kdl_jacobian_ee(num_jnts_);
+//    std_msgs::Float64MultiArray jacobian_msg;
+//    std_msgs::Float64MultiArray jacobian_msg_ee;
 
-    ROS_INFO_STREAM(_kdl_chain.getNrOfSegments() << " is the number of segments in the chain");
-    ROS_INFO_STREAM(_kdl_chain.getNrOfJoints() << " is the number of joints in the chain");
-    ROS_INFO_STREAM("Name of each joint in each segment is as follows: ");
-    for (int seg_num = 0; seg_num  < _kdl_chain.getNrOfSegments(); ++seg_num) {
-        ROS_INFO_STREAM("   " << _kdl_chain.getSegment(seg_num).getJoint().getName());
+//#ifdef DEBUG
+//        std::vector<double> test_joints{0, 0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0};
+//        for (unsigned long i = 0; i < test_joints.size(); i++) {
+//            kdl_jnt.data[i] = test_joints[i];
+//        }
+//#endif
 
-    }
+//    uniq_lck lck(joint_positions_.mtx);
+//    _chain_jacobian_solver->JntToJac(joint_positions_.jnts, kdl_jacobian);
+//    KDL::changeBase(kdl_jacobian, frame_rotation_, kdl_jacobian_ee);
+//    lck.unlock();
 
-    threads.push_back(std::thread(&Jacobian::tf_listener_thread, this));
+//    // Clear the Jacobians, populate it and then publish
+//    jacobian_msg.data.clear();
+//    jacobian_msg.layout.dim.resize(2);
+//    jacobian_msg.layout.dim[0].label = "rows";
+//    jacobian_msg.layout.dim[0].size = 6;
+//    jacobian_msg.layout.dim[0].stride = 1;
+//    jacobian_msg.layout.dim[1].label = "columns";
+//    jacobian_msg.layout.dim[1].size = num_jnts_;
+//    jacobian_msg.layout.dim[1].stride = 1;
 
-    _jacobian_solver.reset(new KDL::TreeJntToJacSolver(_kdl_tree));
-    _chain_jacobian_solver.reset(new KDL::ChainJntToJacSolver(_kdl_chain));
-}
+//    jacobian_msg_ee.data.clear();
+//    jacobian_msg_ee.layout.dim.resize(2);
+//    jacobian_msg_ee.layout.dim[0].label = "rows";
+//    jacobian_msg_ee.layout.dim[0].size = 6;
+//    jacobian_msg_ee.layout.dim[0].stride = 1;
+//    jacobian_msg_ee.layout.dim[1].label = "columns";
+//    jacobian_msg_ee.layout.dim[1].size = num_jnts_;
+//    jacobian_msg_ee.layout.dim[1].stride = 1;
 
-void Jacobian::tf_listener_thread() {
-    tf2_ros::Buffer tf_buffer;
-    tf2_ros::TransformListener listener(tf_buffer);
-    geometry_msgs::TransformStamped transform_stamped;
+//    for(int r = 0; r < 6; r++) {
+//        for(int c = 0; c < num_jnts_; c++) {
+//            jacobian_msg.data.push_back(kdl_jacobian(r,c));
+//            jacobian_msg_ee.data.push_back(kdl_jacobian_ee(r,c));
 
-    ros::Rate rate(30);
+//        }
+//    }
 
-    while(ros::ok()) {
-        try {
-            transform_stamped = tf_buffer.lookupTransform("robot_odom", "robot_base_footprint", ros::Time(0));
-            frame_rotation_ = tf2::transformToKDL(transform_stamped).M;
-            transform_calcd = true;
-            cv_.notify_all();
-        }
-        catch (tf2::TransformException &ex) {
-            ROS_WARN("%s",ex.what());
-            ros::Duration(1.0).sleep();
-            continue;
-        }
-        rate.sleep();
-    }
-    // Have the callback exit out of the cv so code does not hang
-    transform_calcd = true;
-    cv_.notify_all();
-}
+//    pub_jacobian_.publish(jacobian_msg);
+//    pub_jacobian_e_.publish(jacobian_msg_ee);
 
-void Jacobian::jointStateCallback(const sensor_msgs::JointState::ConstPtr& msg) {
-    std::unique_lock<std::mutex> lck(mtx_);
-    cv_.wait(lck, [&]{return transform_calcd.load() || !ros::ok();});
-    transform_calcd = false;
-
-    // 6 for robot arm, 8 for robot arm + 2DoF for steering/moving or 14 for robot system msg->position.size();
-    int jnt = 14;
-
-    KDL::JntArray kdl_jnt(jnt);
-    for (int i = 0; i < jnt; i++) {
-        kdl_jnt.data[i] = msg->position[std::find(msg->name.begin(), msg->name.end(), joint_names_[i]) - msg->name.begin()];
-    }
-
-
-    KDL::Jacobian kdl_jacobian(jnt);
-    KDL::Jacobian kdl_jacobian_base(jnt);
-    _jacobian_solver->JntToJac(kdl_jnt, kdl_jacobian, "robot_arm_tool0");
-//    _chain_jacobian_solver->JntToJac(kdl_jnt, kdl_jacobian);
-    KDL::changeBase(kdl_jacobian, frame_rotation_, kdl_jacobian_base);
-    std_msgs::Float64MultiArray jacobian_msg;
-
-    jacobian_msg.data.clear();
-    jacobian_msg.layout.dim.resize(2);
-    jacobian_msg.layout.dim[0].label = "rows";
-    jacobian_msg.layout.dim[0].size = 6;
-    jacobian_msg.layout.dim[0].stride = 1;
-    jacobian_msg.layout.dim[1].label = "columns";
-    jacobian_msg.layout.dim[1].size = jnt;
-    jacobian_msg.layout.dim[1].stride = 1;
-
-    for(int r = 0; r < 6; r++) {
-        for(int c = 0; c < jnt; c++) {
-            jacobian_msg.data.push_back(kdl_jacobian_base(r,c));
-        }
-    }
-
-    _pub_jacobian.publish(jacobian_msg);
-
-}
+//}
 
 int main(int argc, char **argv) {
     
-    /// Initialize ROS node
-    ros::init(argc, argv, "jacobian");
-    ros::NodeHandle n;
-    Jacobian jacobian(&n);
-    ros::spin();
-    ros::shutdown();
+//    ros::init(argc, argv, "jacobian");
+//    Jacobian jacobian;
+//    ros::spin();
+//    ros::shutdown();
 
     return 0;
 }

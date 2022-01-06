@@ -136,10 +136,10 @@ class AdmittanceController():
             j0_pub.publish(-0.87266) # -50deg
             j1_pub.publish(-1.2217) # -70 deg
             j2_pub.publish(1.2217) # 70 deg
-            j3_pub.publish(0) # -50deg
-            j4_pub.publish(0) # -70 deg
-            j5_pub.publish(0) # 70 deg
-            if ((abs(self.__q - q_desired)) < 0.5).all():
+            j3_pub.publish(0)
+            j4_pub.publish(0)
+            j5_pub.publish(0)
+            if ((abs(self.__q - q_desired)) < 0.01).all():
                 break
 
         ka = np.zeros((6,6)) # Virtual spring stiffness of the admittance controller

@@ -1,0 +1,22 @@
+<launch>
+
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find custom_ur_control)/config/ur10_control.yaml" command="load"/>
+
+  <!-- load the controllers -->
+  <node name="custom_ur_pos_controller" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="robot"
+    args="joint1_position_controller 
+    joint2_position_controller 
+    joint3_position_controller
+    joint4_position_controller
+    joint5_position_controller
+    joint6_position_controller"/>
+
+  <!-- Robot state controller not required. See the corresponding yaml file -->
+<!--   <node name="robot_state_publisher2" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen" ns="robot">
+    <remap from="/joint_states" to="/robot/joint_states" />
+  </node> -->
+
+</launch>

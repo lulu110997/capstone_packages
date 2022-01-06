@@ -46,7 +46,7 @@ classdef approximating_jacobians
             % Arm manipulator. The base link hass and offset of -pi/2 to correct for the
             % difference of the original base coord frame to the change in coord frame 
             % due to the first 3 links
-            L4 = Link('d',0.1273,'a',0,'alpha', pi/2,'qlim',deg2rad([-360 360]), 'offset', -pi/2); 
+            L4 = Link('d',0.1273,'a',0,'alpha', pi/2,'qlim',deg2rad([-360 360]), 'offset', pi/2); 
             L5 = Link('d',0,'a',-0.6127,'alpha', 0,'qlim', deg2rad([-360 360]), 'offset',0);
             L6 = Link('d',0,'a',-0.5723,'alpha', 0,'qlim', deg2rad([-360 360]), 'offset', 0);
             L7 = Link('d',0.163941,'a',0,'alpha', pi/2,'qlim',deg2rad([-360 360]),'offset', 0);
@@ -55,7 +55,7 @@ classdef approximating_jacobians
             R = SerialLink([L1 L2 L3 L4 L5 L6 L7 L8 L9],'name','ur10e');
 
             j0_arm = R.jacob0(qs);
-            j0_arm(1:6, 4:9)
+            j0_arm(1:6, 4:9);
 
             if self.teach_ == 1
                 close all;
@@ -76,7 +76,7 @@ classdef approximating_jacobians
             
             qs = self.qs_;
             
-            L1 = Link('d',0.1273,'a',0,'alpha',pi/2,'qlim',deg2rad([-360 360]), 'offset', 0);
+            L1 = Link('d',0.1273,'a',0,'alpha',pi/2,'qlim',deg2rad([-360 360]), 'offset', deg2rad(180));
             L2 = Link('d',0,'a',-0.6127,'alpha',0,'qlim', deg2rad([-360 360]), 'offset',0);
             L3 = Link('d',0,'a',-0.5723,'alpha',0,'qlim', deg2rad([-360 360]), 'offset', 0);
             L4 = Link('d',0.163941,'a',0,'alpha',pi/2,'qlim',deg2rad([-360 360]),'offset', 0);

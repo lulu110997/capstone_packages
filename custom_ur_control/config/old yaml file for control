@@ -1,0 +1,37 @@
+# Based on http://gazebosim.org/tutorials/?tut=ros_control#Createa.yamlconfigfile and
+# catkin_ws/src/rbvogui_common/rbvogui_control/config/ur/ur_control.yaml
+# I think this is the namespace of each controllers
+robot:
+
+  # Position Controllers ---------------------------------------
+  joint0_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_shoulder_pan_joint
+  joint1_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_shoulder_lift_joint
+  joint2_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_elbow_joint
+  joint3_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_1_joint
+  joint4_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_2_joint
+  joint5_position_controller:
+    type: position_controllers/JointPositionController
+    joint: robot_arm_wrist_3_joint
+
+  # gazebo_ros_control/pid_gains:
+  #   robot_arm_shoulder_pan_joint: {p: 100.0, i: 0.0, d: 0}
+  #   robot_arm_shoulder_lift_joint: {p: 100.0, i: 0.0, d: 0}
+  #   robot_arm_elbow_joint: {p: 100.0, i: 0.0, d: 0}
+  #   robot_arm_wrist_1_joint: {p: 100.0, i: 0.0, d: 0}
+  #   robot_arm_wrist_2_joint: {p: 100.0, i: 0.0, d: 0}
+  #   robot_arm_wrist_3_joint: {p: 100.0, i: 0.0, d: 0}
+  
+  # Publish all joint states -----------------------------------
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 60  
