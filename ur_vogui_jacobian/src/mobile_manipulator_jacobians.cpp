@@ -95,7 +95,6 @@ Jacobian::Jacobian() {
 }
 
 void Jacobian::odomCallback(const nav_msgs::Odometry::ConstPtr &msg) {
-
     uniq_lck lck(joint_positions_.mtx);
     joint_positions_.jnts.data[0] = tf::getYaw(msg->pose.pose.orientation);
     joint_positions_.jnts.data[1] = msg->pose.pose.position.y;

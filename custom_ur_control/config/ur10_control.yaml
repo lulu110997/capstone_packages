@@ -1,21 +1,21 @@
 robot:
   # Position Controllers
-  joint1_position_controller:
+  joint0_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_shoulder_pan_joint
-  joint2_position_controller:
+  joint1_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_shoulder_lift_joint
-  joint3_position_controller:
+  joint2_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_elbow_joint
-  joint4_position_controller:
+  joint3_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_wrist_1_joint
-  joint5_position_controller:
+  joint4_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_wrist_2_joint
-  joint6_position_controller:
+  joint5_position_controller:
     type: position_controllers/JointPositionController
     joint: robot_arm_wrist_3_joint
 

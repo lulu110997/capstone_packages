@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(ur_vogui_jacobian)
+project(ur_vogui_fk)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++11)
@@ -8,10 +8,10 @@ add_compile_options(-std=c++11)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
+  kdl_parser
   roscpp
   rospy
   std_msgs
-  kdl_parser
   tf2_ros
 )
 
@@ -107,8 +107,8 @@ find_package(Eigen3 REQUIRED)
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES ur_vogui_jacobian
-#  CATKIN_DEPENDS roscpp rospy std_msgs
+#  LIBRARIES ur_vogui_fk
+#  CATKIN_DEPENDS kdl_parser roscpp rospy std_msgs tf2_ros
 #  DEPENDS system_lib
 )
 
@@ -127,34 +127,31 @@ include_directories(
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}
-#   src/${PROJECT_NAME}/ur_vogui_jacobian.cpp
+#   src/${PROJECT_NAME}/ur_vogui_fk.cpp
 # )
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# add_executable(${PROJECT_NAME}_node src/ur_vogui_jacobian_node.cpp)
-add_executable(${PROJECT_NAME}_jac src/mobile_manipulator_jacobians.cpp)
+add_executable(${PROJECT_NAME}_fk src/mobile_manipulator_fk.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
 ## e.g. "rosrun someones_pkg node" instead of "rosrun someones_pkg someones_pkg_node"
-# set_target_properties(${PROJECT_NAME}_node PROPERTIES OUTPUT_NAME node PREFIX "")
- set_target_properties(${PROJECT_NAME}_jac PROPERTIES OUTPUT_NAME jacobians PREFIX "")
+set_target_properties(${PROJECT_NAME}_fk PROPERTIES OUTPUT_NAME fk PREFIX "")
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(${PROJECT_NAME}_jac ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+ add_dependencies(${PROJECT_NAME}_fk ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(${PROJECT_NAME}_jac ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME}_fk ${catkin_LIBRARIES})
 
 #############
 ## Install ##
@@ -166,6 +163,7 @@ target_link_libraries(${PROJECT_NAME}_jac ${catkin_LIBRARIES})
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 # catkin_install_python(PROGRAMS
+#   scripts/my_python_script
 #   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 # )
 
@@ -202,7 +200,7 @@ target_link_libraries(${PROJECT_NAME}_jac ${catkin_LIBRARIES})
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_ur_vogui_jacobian.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_ur_vogui_fk.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

@@ -8,9 +8,9 @@
      </include>
 
 
-     <include file="$(find traj_follow_mobman)/launch/custom_joy_teleop.launch"/>
-     <include file="$(find vel_cont_mobman)/launch/mobman_control.launch"/>
-     <node pkg="cas_jacobian" type="ur_jacobian" name="jacobian"/>
-     <!-- <node pkg="cas_jacobian" type="admittance_controller.py" name="admittance_controller_node"/> -->
+     <include file="$(find ur_vogui_admittance_controller)/launch/custom_joy_teleop.launch"/>
+     <include file="$(find custom_ur_control)/launch/ur10_control.launch"/>
+     <node pkg="ur_vogui_jacobian" type="jacobians" name="jacobians_node"/>
+     <node pkg="ur_vogui_admittance_controller" type="admittance_controller.py" name="admittance_controller_node"/>
 
 </launch>

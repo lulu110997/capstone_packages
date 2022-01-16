@@ -16,7 +16,6 @@
 
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chainjnttojacsolver.hpp>
-#include <kdl/treejnttojacsolver.hpp>
 #include <kdl/jacobian.hpp>
 #include <kdl/kdl.hpp>
 #include <kdl/segment.hpp>
