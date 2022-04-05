@@ -47,7 +47,7 @@ class KDLKinematics(object):
     Please ensure that the joint positions are in the form of [y_base_pose, x_base_pos, q1...q6]
     '''
 
-    def __init__(self):
+    def __init__(self, urdf_file=None):
         '''
         Create a model of the RB Vogui with the UR10 on top as a KDL chain
         '''
@@ -55,21 +55,25 @@ class KDLKinematics(object):
         self.vogui_model = kdl.Chain() # Define the chain that the model will be stored in
         self.nr_jnts = 8 # of arm = 6 + 2 DoF from mobile base
 
-        # Get robot description from parameter server
-        robot_desc_ = rospy.get_param("/robot/robot_description")
-
-        # Use KDL parser to obtain a KDL tree of the RB Vogui from the robot desc
-        ok, vogui_tree_ = kdl_parser_py.urdf.treeFromString(robot_desc_)
-        if not ok:
-            raise Exception("Cannot create tree from robot robot description")
-            return
+        # Use KDL parser to obtain a KDL tree of the RB Vogui
+        ok = False # Bool that checks if a tree has been created successfully or not
+        try: # A urdf file exists
+            ok, vogui_tree_ = kdl_parser_py.urdf.treeFromFile(urdf_file)
+        except: # Get robot description from parameter server as there is no urdf file
+            robot_desc_ = rospy.get_param("/robot/robot_description")
+            ok, vogui_tree_ = kdl_parser_py.urdf.treeFromString(robot_desc_)
+        finally:
+            # Check a tree has been created
+            if not ok:
+                raise Exception("Cannot create tree from URDF file or robot description")
+                return
 
         # Define the base link and end link (obtained from the URDF) that will define the chain from the tree
         base_link = "robot_arm_base"
         end_link = "robot_arm_tool0"
 
-        # Obtain a KDL chain from the KDL tree
-        vogui_chain_ = vogui_tree_.getChain(base_link, end_link)
+        # Obtain a KDL chain from the KDL tree. This is the UR10
+        UR10_chain = vogui_tree_.getChain(base_link, end_link)
 
         # Create a KDL vector to define the xy_origin (0,0,0), prisy_axis (0,1,0) and  prix_axis (1,0,0)
         # kdl vectors
@@ -82,27 +86,36 @@ class KDLKinematics(object):
         prisy = kdl.Joint("prisy", xy_origin, prisy_axis, kdl.Joint.TransAxis)
         prisx = kdl.Joint("prisx", xy_origin, prisx_axis, kdl.Joint.TransAxis)
 
+
         # Define the segment in which each joint will be attached to then add those segments onto the chain
+        # The x-segment that the arm will attach to needs to have the same frame as the base arm segment.
+        seg_rot = kdl.Rotation()
+        seg_rot.DoRotZ(M_PI)
+        seg_vec = kdl.Vector()
+        seg_frame = kdl.Frame(seg_rot, seg_vec)
         #kdl segments
         segy = kdl.Segment("segy", prisy)
-        segx = kdl.Segment("segx", prisx)
+        segx = kdl.Segment("segx", prisx, seg_frame)
 
-        # Add the mobile base to the vogui model as two segments with prismatic joints
+
+        # Add the mobile base to the vogui model as two segments with prismatic joints, then add the UR10 to the chain
         self.vogui_model.addSegment(segy)
         self.vogui_model.addSegment(segx)
-        for i in range(1, 8): # Add each segment of the robot arm on the chain, remove segments that has joint type None
-            self.vogui_model.addSegment(vogui_chain_.getSegment(i))
+        self.vogui_model.addChain(UR10_chain)
 
         # Define kdl kinematic solvers
         self.fk_solver_ = kdl.ChainFkSolverPos_recursive(self.vogui_model) 
         self.jac_solver_ = kdl.ChainJntToJacSolver(self.vogui_model)
 
-    def Jacob(self, q, world_to_ee_rot=None):
+        # for i in range(0, self.vogui_model.getNrOfSegments()):
+        #         print(self.vogui_model.getSegment(i).getJoint().getName())
+
+    def Jacob(self, q, ee_frame=False):
         '''
         Calculates the Jacobian in either the world frame or EE frame. Default is world
         Returns the Jacobian matrix in the desired frame of ref as a np matrix
 
-        world_to_ee_rot: current joint position either as a list or a np array
+        ee_frame: bool. True if Jac in EE is desired
         f: desired frame of reference ('world' or 'ee')
         '''
 
@@ -110,26 +123,97 @@ class KDLKinematics(object):
         q_kdl = joint_list_to_kdl(q)
         self.jac_solver_.JntToJac(q_kdl, j_kdl)
 
-        if f != 'world':
-            listener = tf.TransformListener()
-            world_to_ee_rotation = kdl.Rotation()
-            while True:
-                try:
-                    (trans, rot) = listener.lookupTransform("robot_arm_tool0", "robot_arm_base", rospy.Time(0))
-                    world_to_ee_rotation = rot
-                    world_to_ee_rotation.DoRotZ(M_PI)
-                    j_kdl.changeBase(world_to_ee_rotation)
-                    break
-                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                    continue
-        print(j_kdl)
+        if ee_frame:
+
+            base_to_ee_rot = kdl.Rotation()
+            seg_idx = 0
+            jnt_idx = 0
+
+            while seg_idx < self.vogui_model.getNrOfSegments():
+
+                if self.vogui_model.getSegment(seg_idx).getJoint().getType() == 8:
+                    base_to_ee_rot = base_to_ee_rot * self.vogui_model.getSegment(seg_idx).pose(0).M
+                    seg_idx = seg_idx + 1
+
+                else:
+                    base_to_ee_rot = base_to_ee_rot * self.vogui_model.getSegment(seg_idx).pose(q_kdl[jnt_idx]).M
+                    seg_idx = seg_idx + 1
+                    jnt_idx = jnt_idx + 1
+
+            base_to_ee_rot.SetInverse() # Need the rotation from EE to base
+        
+        j_kdl.changeBase(base_to_ee_rot) # Change the frame of reference of the Jacobian
+        
         return kdl_to_mat(j_kdl)
+
+    def fkine(self, q):
+        '''
+        Forward kinematics on the given joint angles, returning a homogenous transform of the
+        EE's pose in cartesian space wrt the origin (world frame of reference)
+        '''
+        ee_frame = kdl.Frame()
+        ret = self.fk_solver_.JntToCart(joint_list_to_kdl(q), ee_frame)
+
+        if ret >= 0:
+            p = ee_frame.p
+            M = ee_frame.M
+            return np.mat([[M[0,0], M[0,1], M[0,2], p.x()], 
+                           [M[1,0], M[1,1], M[1,2], p.y()], 
+                           [M[2,0], M[2,1], M[2,2], p.z()],
+                           [     0,      0,      0,     1]])
+        else:
+            return None
 
     def PartialJPartialQ(self, q):
         '''
         Uses a numerical approach to find the Jacobian Derivative wrt to the position of each joint
         '''
 
+        for k in range(self.nr_jnts):
+
+            # Obtain the current manipulability, Jacobian and its 
+            # pseudoinverse for the current joint config
+            curr_jac = kdl.Jacobian(self.nr_jnts)
+            q_kdl = joint_list_to_kdl(q)
+            self.jac_solver_.JntToJac(q_kdl, curr_jac)
+            curr_jac_pinv = np.linalg.pinv(curr_jac);
+            curr_mani = sqrt(np.linalg.det(curr_jac*np.transpose(curr_jac)));
+            
+            # Find the 'next' and 'previous' Jacobian given a movement in
+            # the independent (joint) variable and numerically calculate
+            # the jacobian wrt the independent variable
+            jac_p = R.jacob0(curr_q + delta_matrix(k,:));
+            jac_p = [jac_p(1:2,:); jac_p(6,:)];
+            jac_m = R.jacob0(curr_q - delta_matrix(k,:));
+            jac_m = [jac_m(1:2,:); jac_m(6,:)];
+            partialJ_partialqk = (jac_p - jac_m)/(2*h);     
+            
+            numerical_dm_dq_(k) = curr_mani*np.trace(partialJ_partialqk*curr_jac_pinv);
+
 q0 = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]]).transpose()
-ob = KDLKinematics()
-ob.Jacob(q0, 'ee')
+ob = KDLKinematics(urdf_file='/home/louis/catkin_ws/src/custom_ur_control/rb_vogui_generated.urdf')
+# ob.fkine(q0)
+ob.Jacob(q0, True)
+
+'''
+
+j0 =
+
+    0.0000    1.0000    0.4343    0.2957   -0.0744   -0.0744    0.0593         0
+    1.0000   -0.0000    0.6988   -0.3524    0.0886    0.0886   -0.0706         0
+    0.0000   -0.0000    0.0000   -0.7819   -0.5723    0.0000   -0.0000         0
+         0         0    0.0000    0.7660    0.7660    0.7660   -0.0000    0.7660
+         0         0   -0.0000    0.6428    0.6428    0.6428    0.0000    0.6428
+         0         0    1.0000    0.0000    0.0000    0.0000   -1.0000    0.0000
+
+
+je =
+
+    0.7660   -0.6428    0.2561   -0.4600    0.1157    0.1157   -0.0922         0
+   -0.0000    0.0000   -0.0000   -0.7819   -0.5723         0         0         0
+    0.6428    0.7660    0.7819         0         0         0         0         0
+         0         0         0         0         0         0         0         0
+         0         0    1.0000         0         0         0   -1.0000         0
+         0         0    0.0000    1.0000    1.0000    1.0000    0.0000    1.0000
+
+'''
