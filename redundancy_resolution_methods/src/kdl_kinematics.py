@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-from urdf_parser_py.urdf import URDF
 from math import pi as M_PI
 
 import numpy as np
 import rospy
 import PyKDL as kdl
 import kdl_parser_py.urdf
-import tf
 
 # The following 3 functinons were extracted from https://github.com/RethinkRobotics/baxter_pykdl/blob/master/src/baxter_kdl/kdl_kinematics.py
 def kdl_to_mat(m):
@@ -141,9 +139,8 @@ class KDLKinematics(object):
                     jnt_idx = jnt_idx + 1
 
             base_to_ee_rot.SetInverse() # Need the rotation from EE to base
-        
-        j_kdl.changeBase(base_to_ee_rot) # Change the frame of reference of the Jacobian
-        
+            j_kdl.changeBase(base_to_ee_rot) # Change the frame of reference of the Jacobian
+        # print(j_kdl)
         return kdl_to_mat(j_kdl)
 
     def fkine(self, q):
@@ -164,10 +161,19 @@ class KDLKinematics(object):
         else:
             return None
 
-    def PartialJPartialQ(self, q):
+    def manipulability_gradient(self, q):
         '''
-        Uses a numerical approach to find the Jacobian Derivative wrt to the position of each joint
+        Uses a numerical approach to find the Jacobian Derivative wrt to the position of each joint. This
+        is then used to compute the manipulability at this specific joint configuration
         '''
+        # import time
+        # start = time.time()
+
+        # Create a matrix where each column represents a small (h) movement of an independent variable
+        numerical_dm_dq_ = np.zeros((self.nr_jnts,1)) # Manipulability gradient
+        delta_matrix = np.zeros((self.nr_jnts,self.nr_jnts))
+        h = 0.0001
+        np.fill_diagonal(delta_matrix, h)
 
         for k in range(self.nr_jnts):
 
@@ -176,26 +182,40 @@ class KDLKinematics(object):
             curr_jac = kdl.Jacobian(self.nr_jnts)
             q_kdl = joint_list_to_kdl(q)
             self.jac_solver_.JntToJac(q_kdl, curr_jac)
-            curr_jac_pinv = np.linalg.pinv(curr_jac);
-            curr_mani = sqrt(np.linalg.det(curr_jac*np.transpose(curr_jac)));
-            
+            curr_jac = kdl_to_mat(curr_jac)
+            curr_jac_pinv = np.linalg.pinv(curr_jac)
+            curr_mani = np.sqrt(np.linalg.det(curr_jac*np.transpose(curr_jac)))
             # Find the 'next' and 'previous' Jacobian given a movement in
             # the independent (joint) variable and numerically calculate
             # the jacobian wrt the independent variable
-            jac_p = R.jacob0(curr_q + delta_matrix(k,:));
-            jac_p = [jac_p(1:2,:); jac_p(6,:)];
-            jac_m = R.jacob0(curr_q - delta_matrix(k,:));
-            jac_m = [jac_m(1:2,:); jac_m(6,:)];
-            partialJ_partialqk = (jac_p - jac_m)/(2*h);     
-            
-            numerical_dm_dq_(k) = curr_mani*np.trace(partialJ_partialqk*curr_jac_pinv);
+            jac_p = kdl.Jacobian(self.nr_jnts)
+            q_kdl = joint_list_to_kdl(q + np.transpose(np.array([delta_matrix[k,:]])) )
+            self.jac_solver_.JntToJac(q_kdl, jac_p)
+            jac_p = kdl_to_mat(jac_p)
 
-q0 = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]]).transpose()
-ob = KDLKinematics(urdf_file='/home/louis/catkin_ws/src/custom_ur_control/rb_vogui_generated.urdf')
-# ob.fkine(q0)
-ob.Jacob(q0, True)
+            jac_m = kdl.Jacobian(self.nr_jnts)
+            q_kdl = joint_list_to_kdl(q - np.transpose(np.array([delta_matrix[k,:]])) )
+            self.jac_solver_.JntToJac(q_kdl, jac_m)
+            jac_m = kdl_to_mat(jac_m)
+
+            partialJ_partialqk = (jac_p - jac_m)/(2*h)
+            numerical_dm_dq_[k] = curr_mani*np.trace(partialJ_partialqk*curr_jac_pinv)
+        # print(curr_mani)
+        # print(1 / (time.time()-start))
+        return numerical_dm_dq_
+
+if __name__ == '__main__': 
+    # q0 = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]])
+    q0 = np.array([0, 0, 0, -0.5230, 1.2215, 2.9665, 1.5705, 0]) # A joint config with high manipulability (2.16)
+    ob = KDLKinematics(urdf_file='/home/louis/catkin_ws/src/custom_ur_control/rb_vogui_generated.urdf')
+    ob.fkine(q0)
+    ob.Jacob(q0)
+    ob.Jacob(q0, True)
+    ob.manipulability_gradient(q0)
 
 '''
+
+q0 = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]])
 
 j0 =
 
