@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import division
 from math import pi as M_PI
 
 import numpy as np
@@ -40,9 +41,11 @@ class KDLKinematics(object):
     - Calculates forward kinematics
     - Calculates inverse kinematics
     - Calculates Jacobian in world and EE frame
-    - Calculates the partial derivative of the Jacobian wrt each joint (used for calculation of manipulability gradient)
+    - Calculates the partial derivative of the Jacobian wrt each joint (used 
+      for calculation of manipulability gradient)
 
-    Please ensure that the joint positions are in the form of [y_base_pose, x_base_pos, q1...q6]
+    Please ensure that the joint positions are in the form of [y_base_pose, 
+    x_base_pos, q1...q6] and is a column (numpy) array
     '''
 
     def __init__(self, urdf_file=None):
@@ -161,7 +164,7 @@ class KDLKinematics(object):
         else:
             return None
 
-    def manipulability_gradient(self, q):
+    def manipulability_gradient(self, q, ee_frame=False):
         '''
         Uses a numerical approach to find the Jacobian Derivative wrt to the position of each joint. This
         is then used to compute the manipulability at this specific joint configuration
@@ -179,27 +182,20 @@ class KDLKinematics(object):
 
             # Obtain the current manipulability, Jacobian and its 
             # pseudoinverse for the current joint config
-            curr_jac = kdl.Jacobian(self.nr_jnts)
-            q_kdl = joint_list_to_kdl(q)
-            self.jac_solver_.JntToJac(q_kdl, curr_jac)
-            curr_jac = kdl_to_mat(curr_jac)
+            curr_jac = self.Jacob(q, ee_frame)
             curr_jac_pinv = np.linalg.pinv(curr_jac)
             curr_mani = np.sqrt(np.linalg.det(curr_jac*np.transpose(curr_jac)))
+
             # Find the 'next' and 'previous' Jacobian given a movement in
             # the independent (joint) variable and numerically calculate
             # the jacobian wrt the independent variable
-            jac_p = kdl.Jacobian(self.nr_jnts)
-            q_kdl = joint_list_to_kdl(q + np.transpose(np.array([delta_matrix[k,:]])) )
-            self.jac_solver_.JntToJac(q_kdl, jac_p)
-            jac_p = kdl_to_mat(jac_p)
-
-            jac_m = kdl.Jacobian(self.nr_jnts)
-            q_kdl = joint_list_to_kdl(q - np.transpose(np.array([delta_matrix[k,:]])) )
-            self.jac_solver_.JntToJac(q_kdl, jac_m)
-            jac_m = kdl_to_mat(jac_m)
+            q_h = np.transpose(np.array([delta_matrix[:,k]])) # Need to turn the array into a column vector
+            jac_p = self.Jacob(q + q_h, ee_frame) 
+            jac_m = self.Jacob(q - q_h, ee_frame) 
 
             partialJ_partialqk = (jac_p - jac_m)/(2*h)
             numerical_dm_dq_[k] = curr_mani*np.trace(partialJ_partialqk*curr_jac_pinv)
+
         # print(curr_mani)
         # print(1 / (time.time()-start))
         return numerical_dm_dq_
