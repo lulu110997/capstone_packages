@@ -31,18 +31,15 @@ forward_kinematics::forward_kinematics()
 
     // Define the origin of the joints and axis they rotate around or translate
     // along. Must coincide with the UR10's base joint
-    KDL::Vector z_origin(0, 0, 0.127959), xy_origin(0,0,0);
-    KDL::Vector rotz_axis(0,0,1), prisy_axis(0,1,0), prisx_axis(1,0,0);
+    KDL::Vector xy_origin(0,0,0);
+    KDL::Vector prisy_axis(0,1,0), prisx_axis(1,0,0);
 
-    // Model the RB-VOGUI using 1 revolute joint around z and 2 prismatic joints
-    // along the y and x
-    KDL::Joint rotz("rotz", z_origin, rotz_axis, KDL::Joint::JointType::RotAxis),
-        prisy("prisy", xy_origin, prisy_axis, KDL::Joint::JointType::TransAxis),
+    // Model the RB-VOGUI using 2 prismatic joints along the y and x
+    KDL::Joint prisy("prisy", xy_origin, prisy_axis, KDL::Joint::JointType::TransAxis),
         prisx("prisx", xy_origin, prisx_axis, KDL::Joint::JointType::TransAxis);
 
     // Define segment in which each joint will be attached to and then add it on the chain
-    KDL::Segment segz("segz", rotz), segy("segy", prisy), segx("segx", prisx);
-    kdl_chain_.addSegment(segz);
+    KDL::Segment segy("segy", prisy), segx("segx", prisx);
     kdl_chain_.addSegment(segy);
     kdl_chain_.addSegment(segx);
     for (int i = 1; i < 8; i++) { // Add each segment on the robot arm on the chain
@@ -60,7 +57,7 @@ forward_kinematics::forward_kinematics()
 void forward_kinematics::joint_state_cb(const sensor_msgs::JointStateConstPtr &msg) {
     uniq_lck lck(jnt_positions_.mtx);
     int j = 0;
-    for (int i = 3; i < num_jnts_; i++) {
+    for (int i = 2; i < num_jnts_; i++) {
         jnt_positions_.jnts.data[i] = msg->position[std::find(msg->name.begin(), msg->name.end(), joint_names_[j]) - msg->name.begin()];
         j++;
     }
@@ -68,9 +65,8 @@ void forward_kinematics::joint_state_cb(const sensor_msgs::JointStateConstPtr &m
 
 void forward_kinematics::odom_cb(const nav_msgs::OdometryConstPtr &msg) {
     uniq_lck lck(jnt_positions_.mtx);
-    jnt_positions_.jnts.data[0] = tf::getYaw(msg->pose.pose.orientation);
-    jnt_positions_.jnts.data[1] = msg->pose.pose.position.y;
-    jnt_positions_.jnts.data[2] = msg->pose.pose.position.x;
+    jnt_positions_.jnts.data[0] = msg->pose.pose.position.y;
+    jnt_positions_.jnts.data[1] = msg->pose.pose.position.x;
 
 }
 

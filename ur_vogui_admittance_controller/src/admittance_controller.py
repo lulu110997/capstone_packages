@@ -5,7 +5,7 @@ import numpy as np
 from sensor_msgs.msg import Joy
 from std_msgs.msg import Float64MultiArray
 
-class AdmittanceController():
+class AdmittanceController(object):
     '''
     An admittance controller for a robotic manipulator
     '''
@@ -18,7 +18,7 @@ class AdmittanceController():
         self.__ft = np.zeros((self.__task_space,1)) # Force exerted on the ee (from joystick)
 
         # Subscriber
-        rospy.Subscriber("joy", Joy, self.joy_callback) # For obtaining joystick values 
+        rospy.Subscriber("joy", Joy, self.joy_callback) # For obtaining joystick values
 
     def joy_callback(self, msg):
         '''

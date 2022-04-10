@@ -1,4 +1,4 @@
-classdef approximating_jacobians
+classdef approximating_jacobians_linux
     properties
         qs_ = [-0.87266, -1.2217, 1.2217, 0, 0, 0]
         h_ = 0.1

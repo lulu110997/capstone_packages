@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 import rospy
-import tf
 import numpy as np
 from std_msgs.msg import Float64, Float64MultiArray
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from nav_msgs.msg import Odometry
-from visualization_msgs.msg import Marker
 
 class JacobianPinv(object):
 
@@ -35,15 +33,15 @@ class JacobianPinv(object):
         base_pub = rospy.Publisher('/robot/cmd_vel', Twist, queue_size=1)
 
         starting_pos = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]]).transpose()
-        
+
         while not rospy.is_shutdown():
             rospy.sleep(0.1)
-            j0_pub.publish(-0.87266)
-            j1_pub.publish(-1.2217)
-            j2_pub.publish(1.2217)
-            j3_pub.publish(0)
-            j4_pub.publish(0)
-            j5_pub.publish(0)
+            j0_pub.publish(starting_pos[2])
+            j1_pub.publish(starting_pos[3])
+            j2_pub.publish(starting_pos[4])
+            j3_pub.publish(starting_pos[5])
+            j4_pub.publish(starting_pos[6])
+            j5_pub.publish(starting_pos[7])
             if (abs(self._q[2:] - starting_pos[2:]) < 0.01).all():
                 break
 
@@ -109,19 +107,3 @@ class JacobianPinv(object):
 if __name__ == '__main__':
     obj = JacobianPinv()
     obj.main()
-
-# import numpy as np
-# import math
-# a = np.array([[4,0], [3,-5]])
-
-# u,s,v = np.linalg.svd(a)
-# s = np.diag(s)
-
-# print(u)
-# print(s)
-# print(v)
-# print((np.round(u@s@v,5)==a).all())
-# WEIGHTS = np.power(np.array([100,100,100,1,1,1,1,1,1]), -0.5)
-# WEIGHT_MATRIX = np.diag(WEIGHTS)
-# print(WEIGHTS)
-# print(100**-0.5)
