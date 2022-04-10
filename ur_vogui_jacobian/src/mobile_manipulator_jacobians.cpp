@@ -39,25 +39,21 @@ Jacobian::Jacobian() {
 
     // Define the origin of the joints and axis they rotate around or translate
     // along. Must coincide with the UR10's base joint
-    KDL::Vector z_origin(0, 0, 0.127959), xy_origin(0,0,0);
-    KDL::Vector rotz_axis(0,0,1), prisy_axis(0,1,0), prisx_axis(1,0,0);
+    KDL::Vector xy_origin(0,0,0);
+    KDL::Vector prisy_axis(0,1,0), prisx_axis(1,0,0);
 
-    // Model the RB-VOGUI using 1 revolute joint around z and 2 prismatic joints
-    // along the y and x
-    KDL::Joint rotz("rotz", z_origin, rotz_axis, KDL::Joint::JointType::RotAxis),
-        prisy("prisy", xy_origin, prisy_axis, KDL::Joint::JointType::TransAxis),
+    // Model the RB-VOGUI using 2 prismatic joints along the y and x
+    KDL::Joint prisy("prisy", xy_origin, prisy_axis, KDL::Joint::JointType::TransAxis),
         prisx("prisx", xy_origin, prisx_axis, KDL::Joint::JointType::TransAxis);
 
     // Define segment in which each joint will be attached to and then add it on the chain
-    KDL::Segment segz("segz", rotz), segy("segy", prisy), segx("segx", prisx);
-    _kdl_chain.addSegment(segz);
+    KDL::Segment segy("segy", prisy), segx("segx", prisx);
     _kdl_chain.addSegment(segy);
     _kdl_chain.addSegment(segx);
     for (int i = 1; i < 8; i++) { // Add each segment on the robot arm on the chain
         _kdl_chain.addSegment(arm.getSegment(i));
     }
     num_jnts_ = _kdl_chain.getNrOfJoints();
-
 
     // Start the tf thread and reset the jacobian solver and initialise member variables
     threads.push_back(std::thread(&Jacobian::tf_listener_thread, this));
@@ -82,7 +78,8 @@ Jacobian::Jacobian() {
 #ifdef DEBUG
     ROS_INFO_STREAM("Obtaining names of joints in the chain");
     for(int i = 0; i < _kdl_chain.getNrOfSegments(); i++) {
-        ROS_INFO_STREAM(_kdl_chain.getSegment(i).getName());
+        ROS_INFO_STREAM("Segment name" << _kdl_chain.getSegment(i).getName());
+        ROS_INFO_STREAM("Joint name" << _kdl_chain.getSegment(i).getJoint().getName());
         auto originn = _kdl_chain.getSegment(i).getJoint().JointOrigin();
         auto axis = _kdl_chain.getSegment(i).getJoint().JointAxis();
         ROS_INFO_STREAM("   origin " << 1.001*originn.data[0] << " " << 1.001*originn.data[1] << " " << 1.001*originn.data[2]);
@@ -96,16 +93,15 @@ Jacobian::Jacobian() {
 
 void Jacobian::odomCallback(const nav_msgs::Odometry::ConstPtr &msg) {
     uniq_lck lck(joint_positions_.mtx);
-    joint_positions_.jnts.data[0] = tf::getYaw(msg->pose.pose.orientation);
-    joint_positions_.jnts.data[1] = msg->pose.pose.position.y;
-    joint_positions_.jnts.data[2] = msg->pose.pose.position.x;
+    joint_positions_.jnts.data[0] = msg->pose.pose.position.y;
+    joint_positions_.jnts.data[1] = msg->pose.pose.position.x;
 }
 
 void Jacobian::jointStateCallback(const sensor_msgs::JointState::ConstPtr &msg) {
 
     uniq_lck lck(joint_positions_.mtx);
     int j = 0;
-    for (int i = 3; i < num_jnts_; i++) {
+    for (int i = 2; i < num_jnts_; i++) {
         joint_positions_.jnts.data[i] = msg->position[std::find(msg->name.begin(), msg->name.end(), joint_names_[j]) - msg->name.begin()];
         j++;
     }
