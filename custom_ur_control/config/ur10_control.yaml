@@ -21,7 +21,10 @@ robot:
 
   # joint_state_controller:
   #   type: joint_state_controller/JointStateController
-  #   publish_rate: 25
+  #   publish_rate: 300
+  # joint_read_controller:
+  #   type: joint_read_controller/JointReadController
+  #   publish_rate: 300
 
 # Robotnik seems to have their own joint state controller that publishes 
 # the joint states of the robot. This means that we don't need the robot
