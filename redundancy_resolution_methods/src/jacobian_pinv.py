@@ -23,16 +23,14 @@ class JacobianPinv(object):
         rospy.Subscriber("jacobian_e", Float64MultiArray, self._jacobian_e_cb)
         rospy.Subscriber("robot/joint_states", JointState, self._joint_states_cb)
         rospy.Subscriber("robot/robotnik_base_control/odom", Odometry, self._odom_cb)
-
         j0_pub = rospy.Publisher('/robot/joint0_position_controller/command', Float64, queue_size=1)
         j1_pub = rospy.Publisher('/robot/joint1_position_controller/command', Float64, queue_size=1)
         j2_pub = rospy.Publisher('/robot/joint2_position_controller/command', Float64, queue_size=1)
         j3_pub = rospy.Publisher('/robot/joint3_position_controller/command', Float64, queue_size=1)
         j4_pub = rospy.Publisher('/robot/joint4_position_controller/command', Float64, queue_size=1)
         j5_pub = rospy.Publisher('/robot/joint5_position_controller/command', Float64, queue_size=1)
-        base_pub = rospy.Publisher('/robot/cmd_vel', Twist, queue_size=1)
 
-        starting_pos = np.array([[0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0]]).transpose()
+        starting_pos = np.array([[0, 0, -0.2513, -1.2566, 1.2566, -1.5708, 1.5708, -1.5708]]).transpose()
 
         while not rospy.is_shutdown():
             rospy.sleep(0.1)
@@ -76,6 +74,7 @@ class JacobianPinv(object):
         j4_pub = rospy.Publisher('/robot/joint4_position_controller/command', Float64, queue_size=1)
         j5_pub = rospy.Publisher('/robot/joint5_position_controller/command', Float64, queue_size=1)
         base_pub = rospy.Publisher('/robot/cmd_vel', Twist, queue_size=1)
+        base_vel = Twist()
 
         dt = 0.04 # Polyscope runs at 25Hz
         rate_limiter = rospy.Rate(25)
@@ -92,7 +91,6 @@ class JacobianPinv(object):
             dq = np.matmul(jac_pinv, self._vel_inp)
             q = np.round(self._q + dq*dt, 5) # Position time step
 
-            base_vel = Twist()
             base_vel.linear.y = dq[0]
             base_vel.linear.x = dq[1]
 
