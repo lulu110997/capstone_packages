@@ -35,7 +35,7 @@ classdef approximating_jacobians_linux
             % approximated Jacobian. It also returns the Jacobian in the EE
             % frame as the third argument in the array
             if nargin < 2
-                qs = [0, 0, 0, -0.87266, -1.2217, 1.2217, 0, 0, 0];
+                qs = [0, 0, 0, 0, -0.5230, 1.2215, 2.9665, 1.5705, 0];
             end
             
             % Mobile base modelled with 2 prismatic links and one revolute link
