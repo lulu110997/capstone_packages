@@ -45,53 +45,35 @@ class NullspaceMethod(JacobianPinv, object):
 
     def main(self):
 
+        # Initialise robot model
         Robot = UrVoguiKdl()
 
-        # j0_pub = rospy.Publisher('/robot/joint0_position_controller/command', Float64, queue_size=1)
-        # j1_pub = rospy.Publisher('/robot/joint1_position_controller/command', Float64, queue_size=1)
-        # j2_pub = rospy.Publisher('/robot/joint2_position_controller/command', Float64, queue_size=1)
-        # j3_pub = rospy.Publisher('/robot/joint3_position_controller/command', Float64, queue_size=1)
-        # j4_pub = rospy.Publisher('/robot/joint4_position_controller/command', Float64, queue_size=1)
-        # j5_pub = rospy.Publisher('/robot/joint5_position_controller/command', Float64, queue_size=1)
+        # Initialise publishers and subscribers required to control the arm and platform 
         ur_vel_pub = rospy.Publisher('/joint_group_vel_controller/command', Float64MultiArray, queue_size=1)
         base_pub = rospy.Publisher('/robot/cmd_vel', Twist, queue_size=1)
-        ur_vel = Float64MultiArray()
-        base_vel = Twist()
 
-        # Physical robot
-        # import actionlib
-        # from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
-        # from trajectory_msgs.msg import JointTrajectoryPoint, JointTrajectory
-        # import sys
-
-        # trajectory_client = actionlib.SimpleActionClient("/scaled_pos_joint_traj_controller/follow_joint_trajectory", FollowJointTrajectoryAction)
-        # if not trajectory_client.wait_for_server(rospy.Duration(5.0)):
-        #     print("Could not reach controller action server")
-        #     sys.exit(-1)
-
-        # JOINT_NAMES = ["robot_arm_shoulder_pan_joint", "robot_arm_shoulder_lift_joint", "robot_arm_elbow_joint", "robot_arm_wrist_1_joint",
-        #                "robot_arm_wrist_2_joint", "robot_arm_wrist_3_joint", ]
-        # Physical robot
-
-        # May need to have a close loop controller for sim. In real life, human is the controller
+        # Frequency of control loop
         frequency = 500.0 # e-series controlled at 500Hz
         dt = 1.0/frequency
         rate_limiter = rospy.Rate(frequency)
         
-        # To do: subscribe to /joy and use button to simulate tool in use
-        tool_in_use = True
-        tau = 0.2
-        min_allowable_weight = 10.0**-5.0
 
-        # Gain for the secondary velocity
-        secondary_vel_gain = 2
+        # Parameters for calculating secondary task calculation
+        tool_in_use = True
+        tau = 0.27
+        min_allowable_weight = 10.0**-5.0
+        secondary_vel_gain = 3
 
         rospy.sleep(1.0)
-
-        print("READY")
+        rospy.loginfo("Entering control loop of nullspace controller...")
 
         while not rospy.is_shutdown():
-            rate_limiter.sleep()
+            # Initialise joint velocities of system
+            ur_vel = Float64MultiArray()
+            base_vel = Twist()
+            base_vel.linear.y = 0
+            base_vel.linear.x = 0
+            ur_vel.data = 6*[0]
 
             # Save current values for present state
             curr_q = self._q.copy()
@@ -100,11 +82,13 @@ class NullspaceMethod(JacobianPinv, object):
             # Calculate manipulability of manipulator
             manipulability = Robot.arm_maniplty(curr_q)
 
-            # Obtain gamma
+            # Obtain gamma, used to calculate the weighting for secondary task
             if not tool_in_use:
+                # Only the platform is utilised
                 platform_weight = min_allowable_weight
                 arm_weight = 1.0
             else:
+                # The arm is utilised depending on the manipulability
                 beta = 0.02
                 beta_power = (manipulability + min_allowable_weight) / tau
                 arm_weight = pow(beta, beta_power)
@@ -117,9 +101,9 @@ class NullspaceMethod(JacobianPinv, object):
             jac_pinv = self.weighted_jacobian([platform_weight if i < 2 else arm_weight for i in range(self._nr_jnts)], jacob_e)
 
             # Weighted Jacobian that utilises manipulator. Used for secondary task in nullspace projection
-            jac_pinv_arm = self.weighted_jacobian([1-min_allowable_weight if i < 2 else min_allowable_weight for i in range(self._nr_jnts)], jacob_e)
+            jac_pinv_arm = self.weighted_jacobian([1.0 if i < 2 else min_allowable_weight for i in range(self._nr_jnts)], jacob_e)
 
-            # Enclose velocity calc in if statement so the small input errors does not accumulate
+            # Enclose velocity calc in if statement so any small input errors does not accumulate
             if np.max(np.abs(curr_vel_in)) > 0:
                 # Primary velocity to satisfy the primary task
                 primary_vel = np.matmul(jac_pinv, curr_vel_in)
@@ -130,49 +114,26 @@ class NullspaceMethod(JacobianPinv, object):
                 # Secondary velocity to satisfy the secondary task, performed in the nullspace
                 secondary_vel = np.matmul(np.eye(self._nr_jnts) - np.matmul(jac_pinv_arm,jacob_e), improve_gradient)
 
-                # Calculate velocity
+                # Calculate required joint velocity
                 dq = primary_vel + secondary_vel_gain*secondary_vel
-                # dq[:2] = np.where(abs(dq[:2]) < 0.09, 0, dq[:2]) # Zero negligible velocity of the platform, if any 
-                for idx, val in enumerate(dq[2:]):
-                    dq[2+idx] = val if abs(val)<1.5 else copysign(0.5, val)
+
+                # Cap the maximum velocity of the system
+                for idx, val in enumerate(dq):
+                    if idx > 1: # Cap UR10s velocity
+                        dq[idx] = copysign(0.25, val) if val > 1.0 else val
+                    else: # Cap Vogui's velocity
+                        dq[idx] = copysign(0.5, val) if val > 1.0 else val
+                dq[:2] = np.where(abs(dq[:2]) < 0.02, 0, dq[:2]) # Zero negligible velocity of the platform, if any 
+
+                # Publish joint velocities
                 base_vel.linear.y = dq[0]
                 base_vel.linear.x = dq[1]
                 ur_vel.data = dq[2:]
 
-                # Position time step
-                # q = np.round(curr_q + dq*dt, 5)
+            base_pub.publish(base_vel)
+            ur_vel_pub.publish(ur_vel)
 
-                # Publish velocities and position for this timestep
-                base_pub.publish(base_vel)
-                # print(ur_vel)
-                ur_vel_pub.publish(ur_vel)
-                # j0_pub.publish(q[2])
-                # j1_pub.publish(q[3])
-                # j2_pub.publish(q[4])
-                # j3_pub.publish(q[5])
-                # j4_pub.publish(q[6])
-                # j5_pub.publish(q[7])
-
-                # Physical robot
-                # Create and fill trajectory goal
-                # goal = FollowJointTrajectoryGoal()
-                # goal.trajectory.joint_names = JOINT_NAMES
-                # position_list = [[q[2], q[3], q[4], q[5], q[6], q[7]]]
-                # duration_list = [dt]
-
-                # point = JointTrajectoryPoint()
-                # point.positions = position_list[0]
-                # point.time_from_start = rospy.Duration(duration_list[0])
-                # goal.trajectory.points.append(point)
-
-                # trajectory_client.send_goal(goal)
-                # trajectory_client.wait_for_result()
-                # Physical robot
-            else:
-                ur_vel = Float64MultiArray()
-                ur_vel.data = [0,0,0,0,0,0]
-                ur_vel_pub.publish(ur_vel)
-
+            rate_limiter.sleep()
 
 
 if __name__ == '__main__':

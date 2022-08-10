@@ -21,7 +21,7 @@ Jacobian::Jacobian() {
     pub_jacobian_ = _n.advertise<std_msgs::Float64MultiArray>("jacobian_0",1);
     pub_jacobian_e_ = _n.advertise<std_msgs::Float64MultiArray>("jacobian_e",1);
 
-    _nh.param("robot_description", _robot_desc, std::string());
+    _nh.param("/robot_description", _robot_desc, std::string());
 
     KDL::Tree tree;
     if(!kdl_parser::treeFromString(_robot_desc, tree)) {

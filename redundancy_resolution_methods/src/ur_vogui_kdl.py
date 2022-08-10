@@ -70,7 +70,7 @@ class UrVoguiKdl(object):
         try: # A urdf file exists
             ok, vogui_tree_ = kdl_parser_py.urdf.treeFromFile(urdf_file)
         except: # Get robot description from parameter server as there is no urdf file
-            robot_desc_ = rospy.get_param("/robot/robot_description")
+            robot_desc_ = rospy.get_param("/robot_description")
             ok, vogui_tree_ = kdl_parser_py.urdf.treeFromString(robot_desc_)
         finally:
             # Check a tree has been created
@@ -81,10 +81,8 @@ class UrVoguiKdl(object):
         # Define the base link and end link (obtained from the URDF) that will define the chain from the tree
         base_link = "robot_arm_base"
         end_link = "robot_arm_tool0"
-
         # Obtain a KDL chain from the KDL tree. This is the UR10
         UR10_chain = vogui_tree_.getChain(base_link, end_link)
-
         # Create a KDL vector to define the xy_origin (0,0,0), prisy_axis (0,1,0) and  prix_axis (1,0,0)
         # kdl vectors
         xy_origin = kdl.Vector(0,0,0)
@@ -178,7 +176,7 @@ class UrVoguiKdl(object):
         Returns the manipulability of the manipulator subsystem
         '''
         curr_jac = self.Jacob(q)
-        # curr_jac = curr_jac[:, 2:] # Obtain the Jacobian relating to the translation of the arm
+        curr_jac = curr_jac[:, 2:] # Obtain the Jacobian relating to the translation of the arm
 
         return np.sqrt(np.max([0,np.linalg.det(curr_jac*np.transpose(curr_jac))]))
 
@@ -198,10 +196,10 @@ class UrVoguiKdl(object):
         h = 0.01
         np.fill_diagonal(delta_matrix, h)
 
-        for k in range(self.nr_jnts): # Only working with arm joints
+        for k in range(2, self.nr_jnts): # Only working with arm joints
             # Obtain the manipulator's current manipulability, Jacobian and its 
             # pseudoinverse for the current joint config
-            curr_jac = self.Jacob(q, ee_frame)#[:, 2:]
+            curr_jac = self.Jacob(q, ee_frame)[:, 2:]
             curr_jac_pinv = np.linalg.pinv(curr_jac)
             curr_mani = self.arm_maniplty(q)
 
@@ -209,8 +207,8 @@ class UrVoguiKdl(object):
             # the independent (joint) variable and numerically calculate
             # the jacobian wrt the independent variable
             q_h = np.transpose(np.array([delta_matrix[:,k]])) # Need to turn the array into a column vector
-            jac_p = self.Jacob(q + q_h, ee_frame)#[:, 2:]
-            jac_m = self.Jacob(q - q_h, ee_frame)#[:, 2:]
+            jac_p = self.Jacob(q + q_h, ee_frame)[:, 2:]
+            jac_m = self.Jacob(q - q_h, ee_frame)[:, 2:]
 
             partialj_partialqk = (jac_p - jac_m)/(2*h)
             numerical_dm_dq_[k] = curr_mani*np.trace(partialj_partialqk*curr_jac_pinv)

@@ -21,27 +21,27 @@ class JacobianPinv(object):
         # Subscriber
         rospy.Subscriber("velocity_input", Float64MultiArray, self._vel_inp_cb)
         rospy.Subscriber("jacobian_e", Float64MultiArray, self._jacobian_e_cb)
-        rospy.Subscriber("robot/joint_states", JointState, self._joint_states_cb)
+        rospy.Subscriber("joint_states", JointState, self._joint_states_cb)
         rospy.Subscriber("robot/robotnik_base_control/odom", Odometry, self._odom_cb)
-        j0_pub = rospy.Publisher('/robot/joint0_position_controller/command', Float64, queue_size=1)
-        j1_pub = rospy.Publisher('/robot/joint1_position_controller/command', Float64, queue_size=1)
-        j2_pub = rospy.Publisher('/robot/joint2_position_controller/command', Float64, queue_size=1)
-        j3_pub = rospy.Publisher('/robot/joint3_position_controller/command', Float64, queue_size=1)
-        j4_pub = rospy.Publisher('/robot/joint4_position_controller/command', Float64, queue_size=1)
-        j5_pub = rospy.Publisher('/robot/joint5_position_controller/command', Float64, queue_size=1)
+        # j0_pub = rospy.Publisher('/robot/joint0_position_controller/command', Float64, queue_size=1)
+        # j1_pub = rospy.Publisher('/robot/joint1_position_controller/command', Float64, queue_size=1)
+        # j2_pub = rospy.Publisher('/robot/joint2_position_controller/command', Float64, queue_size=1)
+        # j3_pub = rospy.Publisher('/robot/joint3_position_controller/command', Float64, queue_size=1)
+        # j4_pub = rospy.Publisher('/robot/joint4_position_controller/command', Float64, queue_size=1)
+        # j5_pub = rospy.Publisher('/robot/joint5_position_controller/command', Float64, queue_size=1)
 
-        starting_pos = np.array([[0, 0, -0.2513, -1.2566, 1.2566, -1.5708, 1.5708, -1.5708]]).transpose()
+        # starting_pos = np.array([[0, 0, -0.2513, -1.2566, 1.2566, -1.5708, 1.5708, -1.5708]]).transpose()
 
-        while not rospy.is_shutdown():
-            rospy.sleep(0.1)
-            j0_pub.publish(starting_pos[2])
-            j1_pub.publish(starting_pos[3])
-            j2_pub.publish(starting_pos[4])
-            j3_pub.publish(starting_pos[5])
-            j4_pub.publish(starting_pos[6])
-            j5_pub.publish(starting_pos[7])
-            if (abs(self._q[2:] - starting_pos[2:]) < 0.01).all():
-                break
+        # while not rospy.is_shutdown():
+        #     rospy.sleep(0.1)
+        #     j0_pub.publish(starting_pos[2])
+        #     j1_pub.publish(starting_pos[3])
+        #     j2_pub.publish(starting_pos[4])
+        #     j3_pub.publish(starting_pos[5])
+        #     j4_pub.publish(starting_pos[6])
+        #     j5_pub.publish(starting_pos[7])
+        #     if (abs(self._q[2:] - starting_pos[2:]) < 0.01).all():
+        #         break
 
     def _vel_inp_cb(self, msg):
         for i in range(len(msg.data)):
@@ -91,8 +91,8 @@ class JacobianPinv(object):
             dq = np.matmul(jac_pinv, self._vel_inp)
             q = np.round(self._q + dq*dt, 5) # Position time step
 
-            base_vel.linear.y = dq[0]
-            base_vel.linear.x = dq[1]
+            base_vel.linear.y = dq[0]/1.1
+            base_vel.linear.x = dq[1]/1.1
 
             base_pub.publish(base_vel)
             j0_pub.publish(q[2])
