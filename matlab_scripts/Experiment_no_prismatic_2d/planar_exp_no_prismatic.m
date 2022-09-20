@@ -2,7 +2,11 @@ clear
 close all
 clc
 
-not_optimise_rmrc = 0;
+not_optimise_rmrc = 1;
+
+% For each 'solution' have the an individual graph for each of the following parameter:
+% the manipulability in same plot
+% Each corresponding joint velocity in the same plot
 
 % Create a 5 DoF 2D manipulator
 scale_lengths = 1.25;
@@ -12,6 +16,7 @@ L3 = Link('d',0,'a',scale_lengths*0.4,'alpha', 0);
 L4 = Link('d',0,'a',scale_lengths*0.5283,'alpha', 0);
 L5 = Link('d',0,'a',scale_lengths*0.6,'alpha', 0);
 R = SerialLink([L1 L2 L3 L4 L5],'name','redundant planar robot');
+% sum(R.a) % 3.3916
 
 % Simulation parameters
 t = 2;             % Total time (s)
@@ -149,9 +154,9 @@ qDots = [qDots; qDot];
 qMatrix = [qMatrix; new_qMatrix];
 m = [m; new_m];
 
-%% Plot the results
+% Plot the results
 close all
-fps = 10000000;
+fps = 20000000000;
 figure(1)
 load('final_cartesian_xy_points.mat');
 final_cartesian_xy_points = final_cartesian_xy_points.final_cartesian_poses;
@@ -181,33 +186,10 @@ plot(3001:4000, m(3001:4000,:), 'r--')
 plot(4001:5000, m(4001:5000,:),  'm.')
 title('Manipulability')
 hold off
-refline([0, 1.5])
-
-figure(3) % joint velocity and manipulability
-subplot(2,1,1)
-hold on
-plot(qDots(:, 1), 'r-')
-plot(qDots(:, 2), 'g-')
-plot(qDots(:, 3), 'b-')
-plot(qDots(:, 4), 'm-')
-plot(qDots(:, 5), 'k-')
-hold off
-legend('Joint1','Joint2', 'Joint3','Joint4', 'Joint5')
-axis padded
-title('Joint Velocities')
-ylabel('Joint velocity')
-xlabel('Step')
-
-subplot(2,1,2)
-hold on
-plot(1:1000, m(1:1000,:), 'g.')
-plot(1001:2000, m(1001:2000,:), 'r-.')
-plot(2001:3000, m(2001:3000,:), 'k.')
-plot(3001:4000, m(3001:4000,:), 'r--')
-plot(4001:5000, m(4001:5000,:),  'm.')
-title('Manipulability')
-hold off
-refline([0, 1.5])
+xline(1000, 'LineWidth',2)
+xline(2000, 'LineWidth',2)
+xline(3000, 'LineWidth',2)
+xline(4000, 'LineWidth',2)
 
 for i=1:3
     pause(0.3)
@@ -288,7 +270,7 @@ function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
         platform_weight = 1.0 - arm_weight;
 
         for j=1:R.n
-            if j == 1 || j == 4
+            if j == 1 || j == 2
                 primary_weight(1,j) = platform_weight;
                 secondary_weight(1,j) = arm_weight;
             else
@@ -298,11 +280,12 @@ function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
         end
         
         
-        pinvJ_primary = pinv_weighted(primary_weight, J);
-        pinvJ_secondary = pinv_weighted(secondary_weight ,J);
-        % End code for weight selection
+%         pinvJ_primary = pinv_weighted(primary_weight, J);
+%         pinvJ_secondary = pinv_weighted(secondary_weight ,J);
         
-%         pinvJ = pinv_weighted(J); % MP Inverse
+        pinvJ_primary = pinv(J);
+        pinvJ_secondary = pinv(J);
+        % End code for weight selection
         
         
         for k = 1:R.n % joints
@@ -316,7 +299,7 @@ function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
             jac_m = [jac_m(1:2,:); jac_m(6,:)];
             partialJ_partialqk = (jac_p - jac_m)/(2*h);     
             
-            numerical_dm_dq_(k) = m(i)*trace(partialJ_partialqk*pinvJ_secondary);
+            numerical_dm_dq_(k) = m(i)*trace(partialJ_partialqk*pinv(J));
         
         end
 

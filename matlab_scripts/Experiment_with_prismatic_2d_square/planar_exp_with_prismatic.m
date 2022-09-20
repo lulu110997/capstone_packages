@@ -2,17 +2,17 @@ clear
 close all
 clc
 
-not_optimise_rmrc = 0;
-
+use_mp_pinv = 0;
+              
 % Create a 5 DoF 2D manipulator
 P1 = Link('theta', -pi/2, 'a', 0, 'alpha', -pi/2, 'qlim', [-2, 2], 'offset', 0); % PRISMATIC Link along y
 P2 = Link('theta', -pi/2, 'a',0 , 'alpha', -pi/2, 'qlim', [-2, 2], 'offset', 0); % PRISMATIC Link along x
 
 L1 = Link('d',0,'a', 1.0, 'alpha', 0, 'offset', 0);
 L2 = Link('d',0,'a', 1.3, 'alpha', 0);
-L3 = Link('d',0,'a', 0.5, 'alpha', 0);
+L3 = Link('d',0,'a', 0.7, 'alpha', 0);
 R = SerialLink([P1 P2 L1 L2 L3],'name','redundant planar robot');
-q_guess = [0 0 -0.2555   -0.8657   -0.1006];
+q_guess = [0 0 0.7791   -1.8074   -0.1910];
 
 R.base = trotx(-pi/2);
 % R.jacob0([0 0 0.8917    0.0000   -0.5356])
@@ -25,219 +25,173 @@ R.base = trotx(-pi/2);
 %     1.0000    1.0000    1.0000
 
 % Simulation parameters
-t = 2;             % Total time (s)
-deltaT = 0.002;      % Corresponds with the 500Hz control frequency
+t = 1;             % Total time (s)
+deltaT = 1/500;      % Corresponds with the 500Hz control frequency
 steps = t/deltaT;   % No. of steps for simulation
 theta = zeros(3,steps);         % Array for roll-pitch-yaw angles
 trajectory = zeros(3,steps);             % Array for x-y-z trajectory
-trajectories = zeros(3,5000);
 
-% Create the sinusoidal trajectory
+waypoints = [ [1 1.5]; ... %C1
+              [-1 1.5]; ... %C2
+              [-1 2.5]; ... %C3
+              [1 2.5]; ... %C4
+              [1 1.5]; ... % Back to start
+              [-3.5 3.5]; ... %WP1
+              [-3 3]; ... %C5
+              [-1 3]; ... %C6
+              [-1 2]; ... %C7
+              [-3 2]; ... %C8
+              [-3 3] ... % Back to start
+              ];
+dist_per_point = (2.793 - pi/9)/length(trajectory);
+negative_rot = [4 7 11];
+no_rot = [3 5 8 10];
+qDots = [];
+qMatrix = [];
+m = [];
+trajectories = [];
+
 s = lspb(0,1,steps);                % Trapezoidal trajectory scalar
 for i=1:steps
-    trajectory(1,i) = (1-s(i))*2.8 + s(i)*1.5; % Points in x
-    trajectory(2,i) = 1.6 + 0.13*sin(i*0.013); % Points in y
-    theta(3,i) = pi/9;                 % Yaw angle
+    trajectory(1,i) = (1-s(i))*1 + s(i)*-1; % Points in x
+    trajectory(2,i) = 1.5; % Points in y
+    theta(3,i) = pi/9  + i*dist_per_point; % Yaw angle
 end
-[trajectory(1,:), trajectory(2,:)] = rotate_points_theta_rad(trajectory(1,:), trajectory(2,:), pi/3);
-
 T = [rpy2r(theta(1,1),theta(2,1),theta(3,1)) trajectory(:,1);zeros(1,3) 1]; % Create transformation of first point and angle
-q0 = R.ikunc(T, q_guess); % Solve joint angles to achieve first waypoint
-%
-if not_optimise_rmrc
-    [qMatrix, m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, q0, R);
-else
-    [qMatrix, m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R);
-end
-qDots = qDot;
-trajectories(:,1:1000) = trajectory;
+last_q = R.ikunc(T, q_guess); % Solve joint angles to achieve first waypoint
+last_yaw = pi/9;
 
-% Generate a trajectory using by creating a polynomial from a set of points
-% Obtain current EE pose
-last_q = qMatrix(end,:);
-T = R.fkine(last_q).T;
-rpy = tr2rpy(T);
-last_yaw = rpy(3);
-% Create a set of points
-% x_points = [T(1,end), 1.68, 1.22, 0.85, 0.68 0.4, 0.36, 0.3, 0.28, 0, -0.1, -0.17];
-y_points = [T(2,end), 1.1, 1.35, 1.4, 1.47, 1.5, 1.8, 2.5, 2.8, 2.879, 3, 3.08];
-x_points = lspb(T(1,end), -0.05, length(y_points))';
-% y_points = lspb(T(2,end), 3, 5)';
-% interpolated_points = fnplt(cscvn([x_points; y_points]));
-% Obtain the polynomial
-p = polyfit(x_points, y_points, length(y_points)-1);
-x1 = linspace(T(1,end), 0, steps);
-f1 = polyval(p, x1);
-if abs(f1(1) - T(2,end)) > 0.01
-    error('polynomial bad')
+for wp_idx = 2:length(waypoints)
+    % Determine direction of rotation
+    if ismember(wp_idx, no_rot)
+            dist_per_point = 0;
+    elseif ismember(wp_idx, negative_rot)
+        dist_per_point = -(2.793 - pi/9)/length(trajectory);
+    else
+        dist_per_point = (2.793 - pi/9)/length(trajectory);
+    end
+    % Generate the trajectory
+    for i=1:length(trajectory)
+        trajectory(1,i) = (1-s(i))*T(1,end) + s(i)*waypoints(wp_idx); % Points in x
+        trajectory(2,i) =(1-s(i))*T(2,end) + s(i)*waypoints(11+wp_idx); % Points in y
+        theta(3,i) = last_yaw + i*dist_per_point;                 % Yaw angle
+    end
+    if use_mp_pinv
+        [new_qMatrix, new_m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, last_q, R);
+    else
+        [new_qMatrix, new_m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, last_q, R);
+    end
+    qDots = [qDots; qDot];
+    qMatrix = [qMatrix; new_qMatrix];
+    m = [m; new_m];
+    trajectories = [trajectories trajectory];
+    % Obtain current EE pose
+    last_q = qMatrix(end,:);
+    T = R.fkine(last_q).T;
+    rpy = tr2rpy(T);
+    last_yaw = rpy(3);
 end
-% Generate the trajectory
-trajectory = [x1; f1; zeros(1,steps)];
-dist_per_point = ((0.7*pi)/2 - last_yaw)/length(trajectory);
-for i=1:length(trajectory)
-    theta(:,i) = [0 0 (last_yaw + i*dist_per_point)]';
-end
-if not_optimise_rmrc
-    [new_qMatrix, new_m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, last_q, R);
-else
-    [new_qMatrix, new_m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, last_q, R);
-end
-qDots = [qDots; qDot];
-qMatrix = [qMatrix; new_qMatrix];
-m = [m; new_m];
-trajectories(:,1001:2000) = trajectory;
 
-% Another spline
-% Obtain current EE pose
-last_q = qMatrix(end,:);
-T = R.fkine(last_q).T;
-rpy = tr2rpy(T);
-last_yaw = rpy(3)
-% Generate points
-y_points = [T(2,end), 3.1, 2.97, 2.82, 2.74, 2.25, 1.87, 1.615];
-x_points = lspb(T(1,end), -2, length(y_points))';
-% Obtain the polynomial
-p = polyfit(x_points, y_points, length(y_points)-1);
-x1 = linspace(T(1,end), -2, steps);
-f1 = polyval(p, x1);
-if abs(f1(1) - T(2,end)) > 0.01
-    error('polynomial bad')
-end
-% Generate the trajectory
-trajectory = [x1; f1; zeros(1,steps)];
-dist_per_point = abs(1.1*pi - last_yaw)/length(trajectory);
-for i=1:length(trajectory)
-    theta(:,i) = [0 0 (last_yaw + i*dist_per_point)]';
-end
-if not_optimise_rmrc
-    [new_qMatrix, new_m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, last_q, R);
-else
-    [new_qMatrix, new_m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, last_q, R);
-end
-qDots = [qDots; qDot];
-qMatrix = [qMatrix; new_qMatrix];
-m = [m; new_m];
-trajectories(:,2001:3000) = trajectory;
-
-% Line
-% Obtain current EE pose
-last_q = qMatrix(end,:);
-T = R.fkine(last_q).T;
-rpy = tr2rpy(T);
-last_yaw = rpy(3);
-for i=1:steps
-    trajectory(1,i) = (1-s(i))*T(1,4) + s(i)*-2.7; % Points in x
-    trajectory(2,i) = (1-s(i))*T(2,4) + s(i)*0.6; % Points in y
-    theta(3,i) = last_yaw;                 % Yaw angle
-end
-if not_optimise_rmrc
-    [new_qMatrix, new_m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, last_q, R);
-else
-    [new_qMatrix, new_m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, last_q, R);
-end
-qDots = [qDots; qDot];
-qMatrix = [qMatrix; new_qMatrix];
-m = [m; new_m];
-trajectories(:,3001:4000) = trajectory;
-
-% Sine
-% Obtain current EE pose
-last_q = qMatrix(end,:);
-T = R.fkine(last_q).T;
-rpy = tr2rpy(T);
-last_yaw = rpy(3)
-% Generate the trajectory
-dist_per_point = (1.8*pi + last_yaw)/steps;
-for i=1:steps
-    trajectory(1,i) = (1-s(i))*T(1,4) + s(i)*1.73; % Points in x
-    trajectory(2,i) = T(2,4) + 0.3*sin(i*0.01*exp((i-steps)/800)); % Points in y
-    theta(3,i) = (last_yaw - i*dist_per_point);               % Yaw angle
-end
-if not_optimise_rmrc
-    [new_qMatrix, new_m, qDot] = RMRC_traj_tracking(trajectory, theta, deltaT, last_q, R);
-else
-    [new_qMatrix, new_m, qDot] = RMRC_with_optim(trajectory, theta, deltaT, last_q, R);
-end
-qDots = [qDots; qDot];
-qMatrix = [qMatrix; new_qMatrix];
-m = [m; new_m];
-trajectories(:,4001:5000) = trajectory;
-
-%% Plot the results
+% Plot the results
 close all
-fps = 100000;
-figure(1)
+fps = 10000;
+figure('Position', get(0, 'Screensize'))
 final_cartesian_xy_points = trajectories;
 check_traj(final_cartesian_xy_points)
 
-for i=1:5:4995
-R.plot(qMatrix(i, 1:5),'trail','r-', 'fps', fps, 'workspace', [-4, 4 -4 4 -4 4], 'zoom', 1.8)
+% R.plot(qMatrix(1:2:5000,:),'trail','r-', 'fps', fps, 'workspace', [-4, 4 -4 4 -4 4], 'zoom', 1.8, 'movie', 'frames', 'view', [0 90])
+
+for i=1:10:5000
+    R.plot(qMatrix(i, 1:5),'trail','r-', 'fps', fps, 'workspace', [-4, 4 -4 4 -4 4], 'zoom', 1.8)
 end
 
-%%
+% R.plot(qMatrix(end, 1:5),'trail','r-', 'fps', fps, 'workspace', [-4, 4 -4 4 -4 4], 'zoom', 1.8)
+
+%
 figure('Position', get(0, 'Screensize')) % x,y position of EE and manipulability
 subplot(2,1,1)
 hold on
-plot(final_cartesian_xy_points(1, 1:1000), final_cartesian_xy_points(2,1:1000), 'g.')
-plot(final_cartesian_xy_points(1, 1001:2000), final_cartesian_xy_points(2,1001:2000), 'r-.')
-plot(final_cartesian_xy_points(1, 2001:3000), final_cartesian_xy_points(2,2001:3000), 'k.')
-plot(final_cartesian_xy_points(1, 3001:4000), final_cartesian_xy_points(2,3001:4000), 'r--')
-plot(final_cartesian_xy_points(1, 4001:5000), final_cartesian_xy_points(2,4001:5000), 'm.')
-hold off
-axis padded
+for i=1:500:5000
+    if i <= 2000
+        plot(final_cartesian_xy_points(1, i:i+499), final_cartesian_xy_points(2,i:i+499), 'r-')
+    elseif i>=3000
+        plot(final_cartesian_xy_points(1, i:i+499), final_cartesian_xy_points(2,i:i+499), 'g-')
+    else
+        plot(final_cartesian_xy_points(1, i:i+499), final_cartesian_xy_points(2,i:i+499), 'b-')
+    end
+end
 title('EE position ')
 ylabel('y pos')
 xlabel('x pos')
+hold off
 
 subplot(2,1,2)
 hold on
-plot(1:999, m(1:999,:), 'g.')
-plot(1000:1999, m(1000:1999,:), 'r-.')
-plot(2000:2999, m(2000:2999,:), 'k.')
-plot(3000:3999, m(3000:3999,:), 'r--')
-plot(4000:4994, m(4000:4994,:),  'm.')
+for i=1:499:4990
+    if i <= 1500
+        plot(i:i+498, m(i:i+498,:), 'r-')
+    elseif i>=2500
+        plot(i:i+498, m(i:i+498,:), 'g-')
+    else
+        plot(i:i+498, m(i:i+498,:), 'b-')
+    end
+end
+for i=1:499:4500
+    xline(i+1, 'LineWidth',2, 'HandleVisibility','off')
+end
 title('Manipulability')
+ylim([0 2])
 hold off
-refline([0, 1.5])
 
 figure('Position', get(0, 'Screensize')) % joint velocity and manipulability
 subplot(3,1,1)
 hold on
 plot(qDots(:, 1), 'r-')
 plot(qDots(:, 2), 'g-')
+for i=1:499:4500
+    xline(i+1, 'LineWidth',2, 'HandleVisibility','off')
+end
 hold off
 legend('Joint1','Joint2')
 axis padded
 title('Prismatic Joint Velocities')
 ylabel('Joint velocity')
 xlabel('Step')
+ylim([-6 6])
 
 subplot(3,1,2)
 hold on
 plot(qDots(:, 3), 'b-')
 plot(qDots(:, 4), 'k-')
 plot(qDots(:, 5), 'm-')
-% plot(qDots(:, 6), 'c-')
-% plot(qDots(:, 7), 'm-')
+for i=1:499:4500
+    xline(i+1, 'LineWidth',2, 'HandleVisibility','off')
+end
 hold off
-% legend('Joint3', 'Joint4', 'Joint5', 'Joint6', 'Joint7')
-% legend('Joint3', 'Joint4', 'Joint5', 'Joint6')
 legend('Joint3', 'Joint4', 'Joint5')
 axis padded
 title('Revolute Joint Velocities ')
 ylabel('Joint velocity')
 xlabel('Step')
+ylim([-8 8])
 
 subplot(3,1,3)
 hold on
-plot(1:999, m(1:999,:), 'g.')
-plot(1000:1999, m(1000:1999,:), 'r-.')
-plot(2000:2999, m(2000:2999,:), 'k.')
-plot(3000:3999, m(3000:3999,:), 'r--')
-plot(4000:4995, m(4000:4995,:),  'm.')
+for i=1:499:4990
+    if i <= 1500
+        plot(i:i+498, m(i:i+498,:), 'r-')
+    elseif i>=2500
+        plot(i:i+498, m(i:i+498,:), 'g-')
+    else
+        plot(i:i+498, m(i:i+498,:), 'b-')
+    end
+end
+for i=1:499:4500
+    xline(i+1, 'LineWidth',2, 'HandleVisibility','off')
+end
 title('Manipulability')
 hold off
-refline([0, 1.5])
+ylim([0 2])
 
 figure('Position', get(0, 'Screensize'))
 subplot(5,1,1)
@@ -251,7 +205,11 @@ scatter(m, abs(qDots(:,4)))
 subplot(5,1,5)
 scatter(m, abs(qDots(:,5)))
 
-save('params.mat', 'beta', 'm', 'min_allowable_weight', 'tau', 'trajectories', 'SCALE_NULL_VEL', 'qDots', 'qMatrix')
+if use_mp_pinv
+    save('params.mat', 'm', 'trajectories', 'qDots', 'qMatrix')
+else
+    save('params.mat', 'beta', 'm', 'min_allowable_weight', 'tau', 'trajectories', 'SCALE_NULL_VEL', 'qDots', 'qMatrix')
+end
 saveas(figure(2), "ee_pos.jpg")
 saveas(figure(3), "j_vels.jpg")
 saveas(figure(4), "scatter plot.jpg")
@@ -272,15 +230,6 @@ function jac_pinv_weighted = pinv_weighted(weight, jacobian)
 
 end
 
-function save_stuff()
-    all_transforms = R.fkine(qMatrix).T;
-    xy_points = all_transforms(1:3,4,:);
-    final_cartesian_xy_points = zeros(3,5000);
-    for i=1:5000
-        final_cartesian_xy_points(:,i) = store_here_xy(:,1,i);
-    end
-end
-
 function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
 
     % Track the trajectory with RMRC
@@ -295,10 +244,10 @@ function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
     delta_matrix = diag(h+zeros(R.n,1));
     numerical_dm_dq_ = nan(1,R.n); % Init Jacobian deriv matrix
     
-    SCALE_NULL_VEL = 1;
+    SCALE_NULL_VEL = 16;
     min_allowable_weight = power(10,-5);
-    beta = 0.3;
-    tau = 0.7;
+    beta = 0.77;
+    tau = 0.1;
     primary_weight = zeros(1,R.n);
     secondary_weight = zeros(1,R.n);
     assignin('base','SCALE_NULL_VEL',SCALE_NULL_VEL)
@@ -336,17 +285,24 @@ function [qMatrix, m, qdot] = RMRC_with_optim(trajectory, theta, deltaT, q0, R)
         arm_weight = power(beta, beta_power);
         if arm_weight > 1
             error('arm weight greater than 1!')
-%             arm_weight = min_allowable_weight + ((arm_weight-0.01)/(15-0.01))*(0.99-min_allowable_weight);
         end
         platform_weight = 1.0 - arm_weight;
 
         for j=1:R.n
             if j == 1 || j == 2
                 primary_weight(1,j) = platform_weight;
-                secondary_weight(1,j) = 1; % should be 1. Was arm_weight weight. Can also try platform weight
+                if arm_weight < 0.4
+                    secondary_weight(1,j) = arm_weight; % should be 1. Was arm_weight weight. Can also try platform weight
+                else
+                    secondary_weight(1,j) = 1; % should be 1. Was arm_weight weight. Can also try platform weight
+                end
             else
                 primary_weight(1,j) = arm_weight;
-                secondary_weight(1,j) = min_allowable_weight; % should be min allow. Was platform_weight
+                if arm_weight < 0.4
+                    secondary_weight(1,j) = arm_weight; % should be 1. Was arm_weight weight. Can also try platform weight
+                else
+                    secondary_weight(1,j) = min_allowable_weight; % should be min allow. Was platform_weight
+                end
             end
         end
         
@@ -423,38 +379,14 @@ function [qMatrix, m, qdot] = RMRC_traj_tracking(trajectory, theta, deltaT, q0, 
 
     end
     % Manipulability at final state
-    J = R.jacob0(qMatrix(end,:));
-    J = [J(1:2, :); J(6, :)];
-    j_man = J(:,3:end);
-    m(end) = sqrt(det(j_man*j_man'));
+%     J = R.jacob0(qMatrix(end,:));
+%     J = [J(1:2, :); J(6, :)];
+%     j_man = J(:,3:end);
+%     m(end) = sqrt(det(j_man*j_man'));
 end
 
 function check_traj(trajectory)
 % Check trajectory
 plot3(trajectory(1,:), trajectory(2,:), trajectory(3,:), 'k.')
 
-end
-
-function [x_rot, y_rot] = rotate_points_theta_rad(x, y, theta)
-    % create a matrix of these points, which will be useful in future calculations
-    v = [x;y];
-    % choose a point which will be the center of rotation
-    x_center = x(round(length(x)/2));
-    y_center = y(round(length(y)/2));
-    % create a matrix which will be used later in calculations
-    center = repmat([x_center; y_center], 1, length(x));
-    % define a 40 degree counter-clockwise rotation matrix
-    R = [cos(theta) -sin(theta); sin(theta) cos(theta)];
-    % do the rotation...
-    s = v - center;     % shift points in the plane so that the center of rotation is at the origin
-    so = R*s;           % apply the rotation about the origin
-    vo = so + center;   % shift again so the origin goes back to the desired center of rotation
-    % this can be done in one line as:
-    % vo = R*(v - center) + center
-    % pick out the vectors of rotated x- and y-data
-    x_rot = vo(1,:);
-    y_rot = vo(2,:);
-    % make a plot
-%     plot(x_rot, y_rot, 'r-', x_center, y_center, 'bo');
-%     axis equal
 end
